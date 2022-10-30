@@ -13,6 +13,10 @@ T2T::T2T(TwoWire &wire) {
 
 int T2T::begin() {
     _iicWire->begin();
+    delay(5);
+    _setBaudRate();
+    delay(15);
+    return 0;
 
     _setRegisterPage(SUBUART_CHANNEL_1, SPAGE0);
     _setRegisterPage(SUBUART_CHANNEL_3, SPAGE0);
@@ -22,8 +26,9 @@ int T2T::begin() {
     if (globalRegs != 0) {
        return globalRegs;
     }
-    _setGlobalRegisters();
-    _setBaudRate();
+    // write GENA register (set clock enable to true)
+    // _setRegister(SUBUART_CHANNEL_1, REGISTER_GENA, 0x03);
+    // _setRegister(SUBUART_CHANNEL_3, REGISTER_GENA, 0x03);
 
     // set SIER
     uint8_t value;
@@ -64,15 +69,24 @@ int T2T::begin() {
     return 0;
 }
 
-int T2T::sendStartByte(int numberOfBytes, int direction, boolean zeroIndexed) {
-
+int T2T::sendStartByte(int numberOfBytes, int direction, bool zeroIndexed) {
+    return 0;
 }
 
-int T2T::sendPing(int direction, boolean zeroIndexed) {
-
+int T2T::sendPing(int direction, bool zeroIndexed) {
+    _setRegisterPage(SUBUART_CHANNEL_1, SPAGE1);
+    uint8_t value = 0;
+    if (zeroIndexed) {
+        _readRegister(SUBUART_CHANNEL_3, direction, &value);
+    }
+    else {
+        _readRegister(SUBUART_CHANNEL_1, direction, &value);
+    }
+    _setRegisterPage(SUBUART_CHANNEL_1, SPAGE0);
+    return value;
 }
 
-int T2T::sendData(uint8_t uid[4], const uint8_t *data, uint8_t size, int direction, boolean zeroIndexed) {
+int T2T::sendData(uint8_t uid[4], const uint8_t *data, uint8_t size, int direction, bool zeroIndexed) {
     if (!zeroIndexed) {
         direction--;
     }
@@ -102,7 +116,7 @@ int T2T::sendData(uint8_t uid[4], const uint8_t *data, uint8_t size, int directi
     return 0;
 }
 
-int T2T::readData(uint8_t* buffer, uint8_t size, int direction, boolean zeroIndexed) {
+int T2T::readData(uint8_t* buffer, uint8_t size, int direction, bool zeroIndexed) {
     if (!zeroIndexed) {
         direction--;
     }
@@ -127,7 +141,7 @@ int T2T::readData(uint8_t* buffer, uint8_t size, int direction, boolean zeroInde
     return size;
 }
 
-int T2T::available(int direction, boolean zeroIndexed){
+int T2T::available(int direction, bool zeroIndexed){
     if (!zeroIndexed) {
         direction--;
     }
@@ -147,7 +161,7 @@ int T2T::available(int direction, boolean zeroIndexed){
     return index;
 }
 
-int T2T::writeByte(uint8_t value, int direction, boolean zeroIndexed) {
+int T2T::writeByte(uint8_t value, int direction, bool zeroIndexed) {
     if (!zeroIndexed) {
         direction--;
     }
@@ -161,7 +175,7 @@ int T2T::writeByte(uint8_t value, int direction, boolean zeroIndexed) {
     return 0;
 }
 
-int T2T::readByte(int direction, boolean zeroIndexed) {
+int T2T::readByte(int direction, bool zeroIndexed) {
     uint8_t value;
     if (!zeroIndexed) {
         direction--;
@@ -176,12 +190,13 @@ int T2T::readByte(int direction, boolean zeroIndexed) {
     return value;
 }
 
-void T2T::writeUID(int direction, boolean zeroIndexed) {
+void T2T::writeUID(int direction, bool zeroIndexed) {
     if (!zeroIndexed) {
         direction--;
     }
     uint8_t currentUID[4] = {255, 255, 255, 255};
-    uint8_t newUID[4] = {random(0, 255), random(0, 255), random(0, 255), random(0, 255)};
+    uint8_t newUID[4] = {2,2,2,2};
+    // uint8_t newUID[4] = {random(0, 255), random(0, 255), random(0, 255), random(0, 255)};
 
     uint8_t fifoStateReg;
     _readRegister(direction, REGISTER_FSR, &fifoStateReg);
@@ -213,7 +228,7 @@ int8_t T2T::_getGlobalRegisters() {
         return ERROR_REG_DATA;
     }
 
-    _readRegister(SUBUART_CHANNEL_1, REGISTER_GENA, &GENA_value);
+    _readRegister(SUBUART_CHANNEL_3, REGISTER_GENA, &GENA_value);
     // if no acknowledgment from chip register can not be read and begin process is stopped
     if (GENA_value == ERROR_READ_REG) {
         return ERROR_READ_REG;
@@ -225,28 +240,6 @@ int8_t T2T::_getGlobalRegisters() {
     return 0;
 }
 
-void T2T::_setGlobalRegisters() {
-    // write GENA register (set clock enable to true)
-    _setRegister(SUBUART_CHANNEL_1, REGISTER_GENA, 0x03);
-    // write GRST (reset receive UART)
-    _setRegister(SUBUART_CHANNEL_1, REGISTER_GRST, 0x03);
-    // write GIER (interrupt control)
-    // uint8_t value = 0;
-    // _readRegister(SUBUART_CHANNEL_1, REGISTER_GIER, &value);
-    // value &= 0xFC;
-    // _writeRegister(SUBUART_CHANNEL_1, REGISTER_GIER, value);
-
-    // same thing for second IC
-    // write GENA register (set clock enable to true)
-    _setRegister(SUBUART_CHANNEL_3, REGISTER_GENA, 0x03);
-    // write GRST (reset receive UART)
-    _setRegister(SUBUART_CHANNEL_3, REGISTER_GRST, 0x03);
-    // write GIER (interrupt control)
-    // _readRegister(SUBUART_CHANNEL_3, REGISTER_GIER, &value);
-    // value &= 0xFC;
-    // _writeRegister(SUBUART_CHANNEL_3, REGISTER_GIER, value);
-}
-
 void T2T::_setBaudRate() {
     _setRegisterPage(SUBUART_CHANNEL_1, SPAGE1);
     // set BAUD1
@@ -255,13 +248,13 @@ void T2T::_setBaudRate() {
     _writeRegister(SUBUART_CHANNEL_1, REGISTER_BAUD0, 0x07);
     _setRegisterPage(SUBUART_CHANNEL_1, SPAGE0);
 
-    // same thing for second IC
-    _setRegisterPage(SUBUART_CHANNEL_3, SPAGE1);
-    // set BAUD1
-    _writeRegister(SUBUART_CHANNEL_3, REGISTER_BAUD1, 0x00);
-    // set BAUD0
-    _writeRegister(SUBUART_CHANNEL_3, REGISTER_BAUD0, 0x07);
-    _setRegisterPage(SUBUART_CHANNEL_3, SPAGE0);
+    // // same thing for second IC
+    // _setRegisterPage(SUBUART_CHANNEL_3, SPAGE1);
+    // // set BAUD1
+    // _writeRegister(SUBUART_CHANNEL_3, REGISTER_BAUD1, 0x00);
+    // // set BAUD0
+    // _writeRegister(SUBUART_CHANNEL_3, REGISTER_BAUD0, 0x07);
+    // _setRegisterPage(SUBUART_CHANNEL_3, SPAGE0);
 }
 
 
@@ -311,15 +304,15 @@ int8_t T2T::_readRegister(uint8_t channel, uint8_t register_address, uint8_t *bu
 
 
 uint8_t T2T::_getAddress(uint8_t channel, uint8_t operation) {
-    uint8_t _newAddr = 0b00010000;
+    uint8_t _newAddr = 0b00100000;
     if (channel > SUBUART_CHANNEL_2) {
-        _newAddr = 0b01110000;
+        _newAddr = 0b11100000;
     }
     if (channel % 2 != 0) {
-        bitSet(_newAddr, 1);
+        bitSet(_newAddr, 2);
     }
-    bitWrite(_newAddr, 0, operation);
-    return _newAddr;
+    bitWrite(_newAddr, 1, operation);
+    return _newAddr>>1;
 }
 
 

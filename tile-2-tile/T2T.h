@@ -71,7 +71,6 @@ class T2T
     TwoWire *_iicWire;
     uint8_t _address;
     int8_t _getGlobalRegisters();
-    void _setGlobalRegisters();
     void _setBaudRate();
     uint8_t _getAddress(uint8_t channel, uint8_t operation);
     void _setRegister(uint8_t channel, uint8_t register_address, uint8_t value);
