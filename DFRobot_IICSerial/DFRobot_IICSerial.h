@@ -70,7 +70,6 @@ public:
   #define IICSerial_8F2    0x0F
   #define SUBUART_CHANNEL_1    0x00    //< Sub UART channel1
   #define SUBUART_CHANNEL_2    0x01    //< Sub UART channel2
-  #define SUBUART_CHANNEL_ALL  0x11    //< All sub channels
   #define IIC_ADDR_FIXED       0x10    //< The 4th and 3rd bits of IIC address are fixed, value 1 and 0 respectively 
 
   #define ERR_OK                0

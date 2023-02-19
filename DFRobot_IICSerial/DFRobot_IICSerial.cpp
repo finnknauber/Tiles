@@ -212,11 +212,6 @@ void DFRobot_IICSerial::subSerialConfig(uint8_t subUartChannel){
 }
 
 void DFRobot_IICSerial::subSerialGlobalRegEnable(uint8_t subUartChannel, eGlobalRegType_t type){
-  if(subUartChannel > SUBUART_CHANNEL_ALL)
-  {
-      DBG("SUBSERIAL CHANNEL NUMBER ERROR!");
-      return;
-  }
   uint8_t val = 0;
   uint8_t regAddr = getGlobalRegType(type);
   uint8_t channel = subSerialChnnlSwitch(SUBUART_CHANNEL_1);

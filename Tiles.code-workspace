@@ -6,6 +6,16 @@
 		{
 			"name": "Tile Tests and more",
 			"path": "Tile Tests and more"
+		},
+		{
+			"path": "Tile Core"
+		},
+		{
+			"path": "../tiles-app"
+		},
+		{
+			"name": "Encoder Tile",
+			"path": "Encoder Tile"
 		}
 	],
 	"settings": {

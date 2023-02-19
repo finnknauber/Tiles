@@ -29,8 +29,12 @@ class T2T
     #define ERROR_BUFFER_LIMIT        -7
     #define ERROR_UNKNOWN_DIRECTION   -8
 
+    /* Bytes */
+    #define STARTBYTE   0b10101010
+
+
     T2T();
-    uint8_t UID[4] = {255,255,255,255};
+    uint8_t UID[4] = {0,0,0,0};
     int begin();
     int sendPing(int direction, bool zeroIndexed=true);
     int sendStartByte(int numberOfBytes, int direction, bool zeroIndexed=true);
@@ -39,9 +43,13 @@ class T2T
     int available(int direction, bool zeroIndexed=true);
     int writeUID(int direction, bool zeroIndexed=true);
     int writeByte(uint8_t value, int direction, bool zeroIndexed=true);
+    int print(int value, int direction, bool zeroIndexed=true);
     int readByte(int direction, bool zeroIndexed=true);
-    
+    bool IDisZero();
+    void setUID(int a, int b, int c, int d);
+
   private:
+    void getUID();
     DFRobot_IICSerial getUART(int direction, bool zeroIndexed=true);
     bool validDirection(int direction, bool zeroIndexed=true);
 
