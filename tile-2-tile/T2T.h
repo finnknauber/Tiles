@@ -29,29 +29,40 @@ class T2T
     #define ERROR_BUFFER_LIMIT        -7
     #define ERROR_UNKNOWN_DIRECTION   -8
 
-    /* Bytes */
-    #define STARTBYTE   0b10101010
+    /* Message Types */
+    #define TypeGeneral           0b00010001
+    #define TypeACK               0b00100010
+    #define TypeNACK              0b00110011
+    #define TypeAreYouMaster      0b01000100
+    #define TypeGiveMeANID        0b01010101
+    #define TypeReportHID         0b01100110
+    #define TypeGiveMeYourNID     0b01110111
+    #define TypeHereIsMyNID       0b10001000
+    #define TypeReportNeighbours  0b10011001
 
 
     T2T();
     uint8_t UID[4] = {0,0,0,0};
+    uint8_t MASTER_DIRECTION = 100;
+    uint8_t NETWORK_ID = 0;
+
     int begin();
-    int sendPing(int direction, bool zeroIndexed=true);
-    int sendStartByte(int numberOfBytes, int direction, bool zeroIndexed=true);
-    int sendData(const uint8_t *data, uint8_t size, int direction, bool zeroIndexed=true);
-    int readData(uint8_t* buf, uint8_t size, int direction, bool zeroIndexed=true);
-    int available(int direction, bool zeroIndexed=true);
-    int writeUID(int direction, bool zeroIndexed=true);
-    int writeByte(uint8_t value, int direction, bool zeroIndexed=true);
-    int print(int value, int direction, bool zeroIndexed=true);
-    int readByte(int direction, bool zeroIndexed=true);
+    int setParent(int direction);
+    int getParent();
+    int sendData(uint8_t type, uint8_t network_id, const uint8_t *data, uint8_t size, int direction=-1);
+    int readData(uint8_t* buf, uint8_t size, int direction);
+    int readByte(int direction);
+    int available(int direction);
+    int println(const String &value);
+    int println(bool value);
     bool IDisZero();
     void setUID(int a, int b, int c, int d);
+    int writeByte(uint8_t value, int direction);
 
   private:
     void getUID();
-    DFRobot_IICSerial getUART(int direction, bool zeroIndexed=true);
-    bool validDirection(int direction, bool zeroIndexed=true);
+    DFRobot_IICSerial getUART(int direction);
+    bool validDirection(int direction);
 
 };
 
