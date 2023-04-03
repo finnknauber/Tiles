@@ -34,11 +34,13 @@ class T2T
     #define TypeACK               0b00100010
     #define TypeNACK              0b00110011
     #define TypeAreYouMaster      0b01000100
-    #define TypeGiveMeANID        0b01010101
+    #define TypeNeedNID           0b01010101
     #define TypeReportHID         0b01100110
     #define TypeGiveMeYourNID     0b01110111
     #define TypeHereIsMyNID       0b10001000
+    #define TypeHereIsYourNID     0b10101010
     #define TypeReportNeighbours  0b10011001
+    #define TypeChangeHardwareID  0b10111011
 
 
     T2T();
@@ -49,10 +51,11 @@ class T2T
     int begin();
     int setParent(int direction);
     int getParent();
-    int sendData(uint8_t type, uint8_t network_id, const uint8_t *data, uint8_t size, int direction=-1);
-    int readData(uint8_t* buf, uint8_t size, int direction);
-    int readByte(int direction);
-    int available(int direction);
+    int available(int direction=-1);
+    int sendData(uint8_t type, uint8_t target_network_id, const uint8_t *data, uint8_t size, int direction=-1, int sender=-1);
+    int readData(uint8_t* buf, uint8_t size, int direction=-1);
+    int peek(int direction=-1);
+    int readByte(int direction=-1);
     int println(const String &value);
     int println(bool value);
     bool IDisZero();

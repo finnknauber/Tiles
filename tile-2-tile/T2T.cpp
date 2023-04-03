@@ -44,7 +44,7 @@ int T2T::getParent() {
 }
 
 
-int T2T::sendData(uint8_t type, uint8_t target_network_id, const uint8_t *data, uint8_t size, int direction) {
+int T2T::sendData(uint8_t type, uint8_t target_network_id, const uint8_t *data, uint8_t size, int direction, int sender) {
     if (direction==-1) {direction=MASTER_DIRECTION;}
 
     int res = 0;
@@ -55,7 +55,12 @@ int T2T::sendData(uint8_t type, uint8_t target_network_id, const uint8_t *data, 
     res = writeByte(target_network_id, direction);
     if (res!=0) {return res;}
 
-    res = writeByte(NETWORK_ID, direction);
+    if (sender != -1) {
+        res = writeByte(sender, direction);
+    }
+    else {
+        res = writeByte(NETWORK_ID, direction);
+    }
     if (res!=0) {return res;}
 
     res = writeByte(size, direction);
@@ -70,6 +75,8 @@ int T2T::sendData(uint8_t type, uint8_t target_network_id, const uint8_t *data, 
 }
 
 int T2T::readData(uint8_t* buffer, uint8_t size, int direction) {
+    if (direction==-1) {direction=MASTER_DIRECTION;}
+
     if (validDirection(direction)) {
         for (int i=0; i<size; i++) {
             buffer[i] = getUART(direction).read();
@@ -78,7 +85,18 @@ int T2T::readData(uint8_t* buffer, uint8_t size, int direction) {
     return ERROR_UNKNOWN_DIRECTION;
 }
 
+int T2T::peek(int direction) {
+    if (direction==-1) {direction=MASTER_DIRECTION;}
+
+    if (validDirection(direction)) {
+        return getUART(direction).peek();
+    }
+    return ERROR_UNKNOWN_DIRECTION;
+}
+
 int T2T::available(int direction){
+    if (direction==-1) {direction=MASTER_DIRECTION;}
+
     if (validDirection(direction)) {
         return getUART(direction).available();
     }
@@ -107,6 +125,8 @@ int T2T::writeByte(uint8_t value, int direction) {
 }
 
 int T2T::readByte(int direction) {
+    if (direction==-1) {direction=MASTER_DIRECTION;}
+
     if (validDirection(direction)) {
         return getUART(direction).read();
     }
@@ -134,6 +154,7 @@ void T2T::setUID(int a, int b, int c, int d) {
     EEPROM.write(2, b);
     EEPROM.write(3, c);
     EEPROM.write(4, d);
+    getUID();
 }
 
 
@@ -147,9 +168,7 @@ DFRobot_IICSerial T2T::getUART(int direction) {
     else if (direction == SUBUART_CHANNEL_3) {
         return down;
     }
-    else if (direction == SUBUART_CHANNEL_4) {
-        return left;
-    }
+    return left;
 }
 
 
