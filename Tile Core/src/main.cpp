@@ -4,264 +4,186 @@ uint8_t rawhidData[255];
 byte megabuff[64];
 
 #define TypeGeneral           0b00010001
-#define TypeACK               0b00100010
-#define TypeNACK              0b00110011
+#define TypeIAmMaster         0b00100010
+#define TypeIAmNotMaster      0b00110011
 #define TypeAreYouMaster      0b01000100
 #define TypeNeedNID           0b01010101
 #define TypeReportHID         0b01100110
-#define TypeGiveMeYourNID     0b01110111
 #define TypeHereIsMyNID       0b10001000
 #define TypeHereIsYourNID     0b10101010
 #define TypeReportNeighbours  0b10011001
 #define TypeChangeHardwareID  0b10111011
+#define TypeResetNetworkID    0b11001100
 
 
 bool active_message = false;
 int message_type = 0;
+int connected_to = 0;
+bool connected_to_request_sent = true;
+
 
 void sendData(uint8_t type, uint8_t target_network_id, const int *data, uint8_t size) {
-    while (!Serial1.availableForWrite()) {}
-    Serial1.write(type);
-    while (!Serial1.availableForWrite()) {}
-    Serial1.write(target_network_id);
-    while (!Serial1.availableForWrite()) {}
-    Serial1.write(1);
-    while (!Serial1.availableForWrite()) {}
-    Serial1.write(size);
+	while (!Serial1.availableForWrite()) {}
+	Serial1.write(type);
+	while (!Serial1.availableForWrite()) {}
+	Serial1.write(target_network_id);
+	while (!Serial1.availableForWrite()) {}
+	Serial1.write(1);
+	while (!Serial1.availableForWrite()) {}
+	Serial1.write(size);
 
-    for (int curByte=0; curByte<size; curByte++) {
-        while (!Serial1.availableForWrite()) {}
-        Serial1.write(data[curByte]);
-    }
-    // TODO Checksum
+	for (int curByte=0; curByte<size; curByte++) {
+		while (!Serial1.availableForWrite()) {}
+		Serial1.write(data[curByte]);
+	}
+	// TODO Checksum
 }
 
+
 void resetBuf() {
-    for (int i = 0; i < sizeof(megabuff); i++) {
-        megabuff[i] = 0;
-    }
+	for (int i = 0; i < sizeof(megabuff); i++) {
+		megabuff[i] = 0;
+	}
+}
+
+
+void sendToFrontend(uint8_t type, uint8_t sender, const int *data, uint8_t size) {
+	resetBuf();
+	megabuff[0] = type;
+	megabuff[1] = 1;
+	megabuff[2] = sender;
+	megabuff[3] = size;
+	for (int i=0; i<size; i++) {
+		megabuff[4+i] = data[i];
+	}
+	RawHID.write(megabuff, sizeof(megabuff));
+}
+
+bool is_valid_data_type(uint8_t type) {
+	int data_types[] = {TypeGeneral, TypeIAmMaster, TypeAreYouMaster, TypeNeedNID, TypeReportHID, TypeHereIsMyNID, TypeHereIsYourNID, TypeReportNeighbours, TypeChangeHardwareID, TypeResetNetworkID};
+	for (int i=0; i<10; i++) {
+		if (type == data_types[i]) {
+			return true;
+		}
+	}
+	return false;
 }
 
 
 void setup() {
-    randomSeed(analogRead(A1));
-    pinMode(0, INPUT_PULLUP);
-    Serial.begin(115200);
-    Serial1.begin(115200);
-    RawHID.begin(rawhidData, sizeof(rawhidData));
-    for (int i = 0; i < sizeof(megabuff); i++) {
-        megabuff[i] = 0;
-    }
-    // megabuff[0] = data;
-    // RawHID.write(megabuff, sizeof(megabuff));
-    delay(10);
-    Serial.println("Starting");
+	randomSeed(analogRead(A1));
+	pinMode(0, INPUT_PULLUP);
+	pinMode(3, INPUT);
+
+	RawHID.begin(rawhidData, sizeof(rawhidData));
+	Serial.begin(115200);
+	Serial1.begin(115200);
+	delay(10000);
 }
 
 
 void loop() {
-    if (Serial1.available()) {
-        int data = Serial1.read();
-        if (data == TypeAreYouMaster) {
-            Serial.println("Are you Master?");
-            sendData(TypeACK, 0, {}, 0);
-            while (Serial1.available()) {
-                Serial1.read();
-            }
-            delay(10);
-        }
+	delay(10);
+	/* NEIGHBOUR MANAGEMENT */
+	if (!digitalRead(3) and connected_to != 0) {
+		Serial.println("Update connected to: 0");
+		connected_to = 0;
+		int data[] = {0, 0, connected_to, 0};
+		sendToFrontend(TypeReportNeighbours, 1, data, 4);
+	}
+	/* NEIGHBOUR MANAGEMENT */
 
-        else if (data == TypeNeedNID) {
-            Serial.print("Requested Network ID, Sending ");
-            // Target is Core
-            if (Serial1.read() == 1) {
-                // Sender has Network id 0
-                if (Serial1.read() == 0) {
-                    // Length 0
-                    Serial1.read();
-                    megabuff[0] = TypeNeedNID;
-                    megabuff[1] = 1;
-                    megabuff[2] = 0;
-                    megabuff[3] = 0;
-                    RawHID.write(megabuff, sizeof(megabuff));
-                    resetBuf();
-                    while (RawHID.available() < 64) {delay(5);}
-                    int newAdress = random(2, 255);
-                    int data = RawHID.read();
-                    if (data == TypeHereIsYourNID) {
-                        // target, sender, length
-                        RawHID.read();
-                        RawHID.read();
-                        RawHID.read();
-                        newAdress = RawHID.read();
-                        while (RawHID.available()) {
-                            RawHID.read();
-                        }
-                    }
-                    Serial.println(newAdress);
-                    sendData(TypeHereIsYourNID, 0, &newAdress, 1);
-                }
-            } 
-        }
 
-        else if (data == TypeGeneral) {
-            while (Serial1.available() < 4) {}
-            if (Serial1.read() == 1) {
-                int sender = Serial1.read();
-                int length = Serial1.read();
-                megabuff[0] = TypeGeneral;
-                megabuff[1] = 1;
-                megabuff[2] = sender;
-                megabuff[3] = length;
-                for (int i=0; i<length; i++) {
-                    while (!Serial1.available()) {}
-                    Serial.print(sender);
-                    Serial.print(": ");
-                    data = Serial1.read();
-                    switch (data) {
-                        case 0:
-                            Serial.println("Button Pressed!");
-                            break;
+	/* MESSAGES FROM FRONTEND */
+	if (RawHID.available() >= 4) {
+		uint8_t type = RawHID.read();
+		uint8_t target = RawHID.read();
+		uint8_t sender = RawHID.read();
+		uint8_t length = RawHID.read();
+		while (RawHID.available() < 60) {}
+		if (type == TypeHereIsYourNID) {
+			int newAdress = RawHID.read();
+			while (RawHID.available()) {RawHID.read();}
+			sendData(TypeHereIsYourNID, 0, &newAdress, 1);
+		}
+		else if (type == TypeChangeHardwareID) {
+			int new_id[4] = {};
+			for (int i=0; i<4; i++) {
+				new_id[i] = RawHID.read();
+			}
+			while (RawHID.available()) {RawHID.read();}
+			sendData(TypeChangeHardwareID, sender, new_id, 4);
+		}
+	}
+	/* MESSAGES FROM FRONTEND */
 
-                        case 1:
-                            Serial.println("Button Released!");
-                            break;
-                        
-                        case 2:
-                            Serial.println("Encoder Turned Right!");
-                            break;
-                        
-                        case 3:
-                            Serial.println("Encoder Turned Left!");
-                            break;
 
-                        default:
-                            Serial.print("Not recognized: ");
-                            Serial.println(data);
-                            break;
-                    }
-                    megabuff[4+i] = data;
-                }
-                RawHID.write(megabuff, sizeof(megabuff));
-                resetBuf();
-            }
-        }
+	if (Serial1.available() >= 4) {
+		uint8_t type = Serial1.read();
+		while (!is_valid_data_type(type)) {
+			while(!Serial1.available()) {}
+			type = Serial1.read();
+		}
+		uint8_t target = Serial1.read();
+		uint8_t sender = Serial1.read();
+		uint8_t length = Serial1.read();
+		Serial.print("Type: ");
+		Serial.print(type);
+		Serial.print(", Target: ");
+		Serial.print(target);
+		Serial.print(", Sender: ");
+		Serial.print(sender);
+		Serial.print(", Length: ");
+		Serial.print(length);
+		Serial.print(", Data: ");
+		while (Serial1.available() < length) {}
+		int buffer[length] = {};
+		for (int i=0; i<length; i++) {
+			buffer[i] = Serial1.read();
+			Serial.print(buffer[i]);
+			Serial.print(", ");
+		}
+		Serial.println();
 
-        else if (data == TypeReportHID) {
-            while (Serial1.available() < 3) {}
-            if (Serial1.read() == 1) {
-                int sender = Serial1.read();
-                int length = Serial1.read();
-                while (Serial1.available() < length) {}
-                Serial.print("HID Reported, ");
-                Serial.print(sender);
-                Serial.print(": ");
-                uint8_t id[] = {Serial1.read(), Serial1.read(), Serial1.read(), Serial1.read()};
-                Serial.print(id[0]);
-                Serial.print(".");
-                Serial.print(id[1]);
-                Serial.print(".");
-                Serial.print(id[2]);
-                Serial.print(".");
-                Serial.println(id[3]);
-                megabuff[0] = TypeReportHID;
-                megabuff[1] = 1;
-                megabuff[2] = sender;
-                megabuff[3] = 4;
-                megabuff[4] = id[0];
-                megabuff[5] = id[1];
-                megabuff[6] = id[2];
-                megabuff[7] = id[3];
-                if (id[0] == 0 and id[1] == 0 and id[2] == 0 and id[3] == 0) {
-                    Serial.print("Invalid HID, sending new: ");
-                    int new_id[] = {random(256), random(256), random(256), random(256)};
-                    Serial.print(new_id[0]);
-                    Serial.print(".");
-                    Serial.print(new_id[1]);
-                    Serial.print(".");
-                    Serial.print(new_id[2]);
-                    Serial.print(".");
-                    Serial.println(new_id[3]);
-                    sendData(TypeChangeHardwareID, sender, new_id, 4);
-                    megabuff[4] = new_id[0];
-                    megabuff[5] = new_id[1];
-                    megabuff[6] = new_id[2];
-                    megabuff[7] = new_id[3];
-                }
-                else {
-                    sendData(TypeACK, sender, {}, 0);
-                }
-                RawHID.write(megabuff, sizeof(megabuff));
-                resetBuf();
-            }
-        }
+		/* NORMAL TILE MANAGEMENT */
+		if (type == TypeAreYouMaster) {
+			sendData(TypeIAmMaster, 0, {}, 0);
+		}
 
-        else if (data == TypeGiveMeYourNID) {
-            while (Serial1.available() < 3) {}
-            // target, sender, length
-            Serial1.read();
-            int sender = Serial1.read();
-            Serial1.read();
-            Serial.print(sender);
-            Serial.println(" asked what my network ID is, responding 1");
-            int id = 1;
-            sendData(TypeHereIsMyNID, sender, &id, 1);
-        }
+		else if (type == TypeHereIsMyNID) {
+			int id = buffer[0];
+			if (id != connected_to) {
+				connected_to = id;
+				int id = 1; int data[] = {0, 0, connected_to, 0};
+				sendToFrontend(TypeReportNeighbours, 1, data, 4);
+				sendData(TypeHereIsMyNID, 0, &id, 1);
+				Serial.print("Update connected to: ");
+				Serial.println(connected_to);
+			}
+		}
+		/* NORMAL TILE MANAGEMENT */
 
-        else if (data == TypeReportNeighbours) {
-            while (Serial1.available() < 3) {}
-            // target, sender, length
-            Serial1.read();
-            int sender = Serial1.read();
-            Serial1.read();
-            Serial.print("Neighbours of ");
-            Serial.print(sender);
-            Serial.print(": ");
-            while (Serial1.available() < 4) {}
-            uint8_t Neighbours[] = {Serial1.read(), Serial1.read(), Serial1.read(), Serial1.read()};
-            Serial.print(Neighbours[0]);
-            Serial.print(", ");
-            Serial.print(Neighbours[1]);
-            Serial.print(", ");
-            Serial.print(Neighbours[2]);
-            Serial.print(", ");
-            Serial.println(Neighbours[3]);
-            megabuff[0] = TypeReportNeighbours;
-            megabuff[1] = 1;
-            megabuff[2] = sender;
-            megabuff[3] = 4;
-            megabuff[4] = Neighbours[0];
-            megabuff[5] = Neighbours[1];
-            megabuff[6] = Neighbours[2];
-            megabuff[7] = Neighbours[3];
 
-            RawHID.write(megabuff, sizeof(megabuff));
-            resetBuf();
-        }
-    }/*
-    delay(5000);
-    megabuff[0] = TypeNeedNID;
-    megabuff[1] = 1;
-    megabuff[2] = 0;
-    megabuff[3] = 0;
-    RawHID.write(megabuff, sizeof(megabuff));
-    resetBuf();
-    while (RawHID.available() < 64) {delay(5);}
-    int newAdress = random(2, 255);
-    int data = RawHID.read();
-    Serial.print("Received: ");
-    Serial.print(data);
-    Serial.print(", ");
-    Serial.println(data == TypeHereIsYourNID);
-    if (data == TypeHereIsYourNID) {
-        RawHID.read();
-        RawHID.read();
-        RawHID.read();
-        newAdress = RawHID.read();
-        while (RawHID.available()) {
-            RawHID.read();
-        }
-    }
-    Serial.println(newAdress);*/
+		/* THINGS THAT HAVE TO GO TO FRONTEND */
+		else if (type == TypeNeedNID) {
+			Serial.println("Requested Network ID");
+			sendToFrontend(TypeNeedNID, 0, {}, 0);
+		}
+
+		else if (type == TypeGeneral) {
+			sendToFrontend(TypeGeneral, sender, buffer, length);
+		}
+
+		else if (type == TypeReportHID) {
+			Serial.println("Reported Hardware ID");
+			sendToFrontend(TypeReportHID, sender, buffer, length);
+		}
+
+		else if (type == TypeReportNeighbours) {
+			Serial.println("Reported Neighbours");
+			sendToFrontend(TypeReportNeighbours, sender, buffer, 4);
+		}
+		/* THINGS THAT HAVE TO GO TO FRONTEND */
+	}
 }
 
