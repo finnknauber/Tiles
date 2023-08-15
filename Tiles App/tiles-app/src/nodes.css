@@ -1,0 +1,11 @@
+.react-flow__node {
+    width: unset !important;
+    height: unset !important;
+    display: block !important;
+    padding: 0px !important;
+    margin: 0px !important;
+    background-color: transparent !important;
+    border: none !important;
+    outline: none !important;
+    transition: all .15s ease-in-out;
+}

@@ -4,14 +4,7 @@
 			"path": "."
 		},
 		{
-			"name": "Tile Tests and more",
-			"path": "Tile Tests and more"
-		},
-		{
 			"path": "Tile Core"
-		},
-		{
-			"path": "../tiles-app"
 		},
 		{
 			"name": "Encoder Tile",
@@ -20,6 +13,13 @@
 		{
 			"name": "2 Button Tile",
 			"path": "2 Button Tile"
+		},
+		{
+			"name": "Wireless Tile",
+			"path": "Wireless Tile"
+		},
+		{
+			"path": "Tiles App/tiles-app"
 		}
 	],
 	"settings": {
@@ -45,7 +45,63 @@
 			"xstring": "cpp",
 			"xutility": "cpp",
 			"xlocale": "cpp",
-			"xlocnum": "cpp"
+			"xlocnum": "cpp",
+			"compare": "cpp",
+			"memory": "cpp",
+			"xmemory": "cpp",
+			"xtr1common": "cpp",
+			"atomic": "cpp",
+			"bit": "cpp",
+			"cctype": "cpp",
+			"chrono": "cpp",
+			"clocale": "cpp",
+			"cmath": "cpp",
+			"cstdarg": "cpp",
+			"cstddef": "cpp",
+			"cstdint": "cpp",
+			"cstdio": "cpp",
+			"cstdlib": "cpp",
+			"ctime": "cpp",
+			"cwchar": "cpp",
+			"cwctype": "cpp",
+			"map": "cpp",
+			"exception": "cpp",
+			"algorithm": "cpp",
+			"iterator": "cpp",
+			"memory_resource": "cpp",
+			"numeric": "cpp",
+			"random": "cpp",
+			"ratio": "cpp",
+			"fstream": "cpp",
+			"iosfwd": "cpp",
+			"iostream": "cpp",
+			"limits": "cpp",
+			"new": "cpp",
+			"sstream": "cpp",
+			"stdexcept": "cpp",
+			"streambuf": "cpp",
+			"cinttypes": "cpp",
+			"typeinfo": "cpp",
+			"any": "cpp",
+			"charconv": "cpp",
+			"codecvt": "cpp",
+			"condition_variable": "cpp",
+			"csignal": "cpp",
+			"cstring": "cpp",
+			"set": "cpp",
+			"unordered_set": "cpp",
+			"source_location": "cpp",
+			"future": "cpp",
+			"iomanip": "cpp",
+			"mutex": "cpp",
+			"thread": "cpp",
+			"variant": "cpp",
+			"concepts": "cpp",
+			"format": "cpp",
+			"numbers": "cpp",
+			"semaphore": "cpp",
+			"span": "cpp",
+			"stop_token": "cpp"
 		}
 	}
 }
