@@ -8,6 +8,9 @@
 #include <thread>
 #include <assert.h>
 #include <string>
+#include <format>
+
+
 #ifdef _WIN32
 #pragma comment( lib, "ws2_32" )
 #include <WinSock2.h>
@@ -24,11 +27,14 @@
 #define TypeChangeHardwareID 0b10001000
 #define TypeTileCommand 0b10011001
 
+bool webserver = true;
+
 
 unsigned char megabuff[64];
 bool active_network_ids[255];
 uint8_t hardware_ids[255][5];
 uint8_t neighbours[255][4];
+uint8_t active_neighbours[255];
 
 bool lastLED = false;
 bool led = false;
@@ -79,6 +85,7 @@ int getNewNetworkID() {
     return -1;
 }
 
+
 void removeNetworkID(int id) {
     active_network_ids[id] = false;
     hardware_ids[id][0] = 0;
@@ -109,6 +116,19 @@ void prepareBuffer(uint8_t type, uint8_t target, const int *data, uint8_t size) 
 }
 
 
+void findNeighbours(uint8_t nid) {
+    for (int i = 0; i < 4; i++) {
+        if (neighbours[nid][i] != 0 and nid != neighbours[nid][i]) {
+            if (!active_neighbours[neighbours[nid][i]]) {
+                active_neighbours[neighbours[nid][i]] = true;
+                findNeighbours(neighbours[nid][i]);
+            }
+        }
+    }
+    return;
+}
+
+
 
 using easywsclient::WebSocket;
 static WebSocket::pointer ws = NULL;
@@ -127,25 +147,30 @@ int main() {
     int res;
     res = hid_init();
 
-    // *****WS SETUP***** //
-    #ifdef _WIN32
-        INT rc;
-        WSADATA wsaData;
+    if (webserver) {
+        // *****WS SETUP***** //
+        #ifdef _WIN32
+            INT rc;
+            WSADATA wsaData;
 
-        rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
-        if (rc) {
-            printf("WSAStartup Failed.\n");
-            return 1;
-        }
-    #endif
-    ws = WebSocket::from_url("ws://localhost:8080");
-    assert(ws);
-    ws->send("Ready to receive!");
-    // *****WS SETUP***** //
+            rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
+            if (rc) {
+                printf("WSAStartup Failed.\n");
+                return 1;
+            }
+        #endif
+        ws = WebSocket::from_url("ws://localhost:8080");
+        assert(ws);
+        ws->send("Connected to Websocket!");
+        // *****WS SETUP***** //
+    }
 
 
     device = hid_open(0x2321, 0x8027, NULL);
     printf("Connecting to Core");
+    if (webserver) {
+        ws->send("Connecting to Core");
+    }
     while (!device)
     {
         printf(".");
@@ -153,13 +178,16 @@ int main() {
         device = hid_open(0x2321, 0x8027, NULL);
     }
     res = hid_set_nonblocking(device, 1);
+    if (webserver) {
+        ws->send("Connected");
+        ws->send("{\"connected\": true}");
+    }
     printf("\nConnected!\n");
 
 
     unsigned char buf[64];
     while (true) {
         if (led != lastLED) {
-            printf("why, %d, %d\n", led, lastLED);
             int data[] = {1};
             if (led) {
                 data[0] = {2};
@@ -169,20 +197,56 @@ int main() {
             lastLED = led;
         }
 
-        // *****WS STUFF***** //
-        if (ws->getReadyState() != WebSocket::CLOSED) {
-            ws->poll();
-            ws->dispatch(handle_message);
+        if (webserver) {
+            // *****WS STUFF***** //
+            if (ws->getReadyState() != WebSocket::CLOSED) {
+                ws->poll();
+                ws->dispatch(handle_message);
+            }
+            // *****WS STUFF***** //
         }
-        // *****WS STUFF***** //
 
         res = hid_read(device, buf, 64);
         if (res == -1) {
             const wchar_t* error = hid_error(device);
+            if (webserver) {
+                ws->send("{\"connected\": false}");
+                ws->send("Error => Closing Connection!");
+            }
             printf("Error: %ls => Closing Connection!\n", error);
             hid_close(device);
-            res = hid_exit();
-            return 1;
+            neighbours[1][0] = 0;
+            neighbours[1][1] = 0;
+            neighbours[1][2] = 0;
+            neighbours[1][3] = 0;
+            for (int i = 2; i<255; i++) {
+                removeNetworkID(i);
+            }
+            sleep_for(milliseconds(10));
+
+            device = hid_open(0x2321, 0x8027, NULL);
+            printf("Connecting to Core");
+            if (webserver) {
+                ws->send("Connecting to Core");
+            }
+            while (!device)
+            {
+                if (webserver) {
+                    if (ws->getReadyState() != WebSocket::CLOSED) {
+                        ws->poll();
+                        ws->dispatch(handle_message);
+                    }
+                }
+                printf(".");
+                sleep_for(milliseconds(250));
+                device = hid_open(0x2321, 0x8027, NULL);
+            }
+            res = hid_set_nonblocking(device, 1);
+            printf("\nConnected!\n");
+            if (webserver) {
+                ws->send("Connected");
+                ws->send("{\"connected\": true}");
+            }
         }
 
         if (res != 0) {
@@ -194,8 +258,21 @@ int main() {
 
             if (type == TypeGeneral) {
                 printf("Data Packet by %d: %d\n", sender, buf[4]);
+                std::string arr = "Data Packet by " + std::to_string(sender) + ": " + std::to_string(buf[4]);
+                if (webserver)
+                    ws->send(arr);
+                arr = "{\"sender\": " + std::to_string(sender) + ", \"data\": " + std::to_string(buf[4]) + "}";
+                if (webserver)
+                    ws->send(arr);
                 if (hardware_ids[sender][0] == 0) {
                     removeNetworkID(sender);
+                    std::string arr = "Removed Network ID (Data Packet by unknown sender): " + std::to_string(sender);
+                    printf("Removed Network ID (Data Packet by unknown sender): %d\n", sender);
+                    if (webserver)
+                        ws->send(arr);
+                    arr = "{\"removed_nid\": " + std::to_string(sender) + "}";
+                    if (webserver)
+                        ws->send(arr);
                     int data[] = {3};
                     prepareBuffer(TypeTileCommand, sender, data, 1);
                     hid_write(device, megabuff, 64);
@@ -204,6 +281,7 @@ int main() {
 
             else if (type == TypeNeedNID) {
                 int data[] = {getNewNetworkID()};
+                printf("Network ID assigned: %d\n", data[0]);
                 prepareBuffer(TypeHereIsYourNID, 0, data, 1);
                 hid_write(device, megabuff, 64);
             }
@@ -212,20 +290,47 @@ int main() {
                 int result = addHID(sender, buf[4], buf[5], buf[6], buf[7], buf[8]);
                 if (result == -1) {
                     int data[] = {rand() % 255 + 1, rand() % 255 + 1, rand() % 255 + 1, rand() % 255 + 1};
+                    printf("Change Hardware ID %d: %d.%d.%d.%d\n", sender, data[0], data[1], data[2], data[3]);
                     prepareBuffer(TypeChangeHardwareID, sender, data, 4);
                     hid_write(device, megabuff, 64);
                 }
                 else if (result == -2) {
                     removeNetworkID(sender);
+                    std::string arr = "Removed Network ID (Double Network ID): " + std::to_string(sender);
+                    printf("Removed Network ID (Double Network ID): %d\n", sender);
+                    if (webserver)
+                        ws->send(arr);
+                    arr = "{\"removed_nid\": " + std::to_string(sender) + "}";
+                    if (webserver)
+                        ws->send(arr);
                     int data[] = {3};
                     prepareBuffer(TypeTileCommand, sender, data, 1);
                     hid_write(device, megabuff, 64);
                 }
+                else {
+                    std::string arr = "Reported Hardware ID -> " + std::to_string(sender) + ": " + std::to_string(buf[4]) + "." + std::to_string(buf[5]) + "." + std::to_string(buf[6]) + "." + std::to_string(buf[7]) + ":" + std::to_string(buf[8]);
+                    printf("Reported Hardware ID -> %d: %d.%d.%d.%d:%d\n", sender, buf[4], buf[5], buf[6], buf[7], buf[8]);
+                    if (webserver)
+                        ws->send(arr);
+                    arr = "{\"nid\": " + std::to_string(sender) + ", \"type\": " + std::to_string(buf[8]) + ", \"hid\": [" + std::to_string(buf[4]) + "," + std::to_string(buf[5]) + "," + std::to_string(buf[6]) + "," + std::to_string(buf[7]) + "]}";
+                    if (webserver)
+                        ws->send(arr);
+                }
             }
 
             else if (type == TypeReportNeighbours) {
-                if (hardware_ids[sender][0] == 0) {
+                if (sender == 0) {
+                    printf("Not possible");
+                }
+                else if (hardware_ids[sender][0] == 0 and sender != 1 and sender != 0) {
                     removeNetworkID(sender);
+                    std::string arr = "Removed Network ID (Report Neigbours by unknown sender): " + std::to_string(sender);
+                    printf("Removed Network ID (Report Neigbours by unknown sender): %d\n", sender);
+                    if (webserver)
+                        ws->send(arr);
+                    arr = "{\"removed_nid\": " + std::to_string(sender) + "}";
+                    if (webserver)
+                        ws->send(arr);
                     int data[] = {3};
                     prepareBuffer(TypeTileCommand, sender, data, 1);
                     hid_write(device, megabuff, 64);
@@ -235,15 +340,40 @@ int main() {
                     neighbours[sender][1] = buf[5];
                     neighbours[sender][2] = buf[6];
                     neighbours[sender][3] = buf[7];
-                    for (int id = 1; id < 255; id++) {
-                        if (active_network_ids[id])
-                            printf("Neighbours of %d: %d, %d, %d, %d\n", id, neighbours[id][0], neighbours[id][1], neighbours[id][2], neighbours[id][3]);
+                    std::string arr = "Reported Neighbours -> " + std::to_string(sender) + ": " + std::to_string(buf[4]) + "." + std::to_string(buf[5]) + "." + std::to_string(buf[6]) + "." + std::to_string(buf[7]);
+                    printf("Reported Neighbours -> %d: %d, %d, %d, %d\n", sender, buf[4], buf[5], buf[6], buf[7]);
+                    if (webserver)
+                        ws->send(arr);
+                    arr = "{\"nid\": " + std::to_string(sender) + ", \"neighbours\": [" + std::to_string(buf[4]) + "," + std::to_string(buf[5]) + "," + std::to_string(buf[6]) + "," + std::to_string(buf[7]) + "]}";
+                    if (webserver)
+                        ws->send(arr);
+
+
+                    for (int i = 0; i < 255; i++) {
+                        active_neighbours[i] = false;
+                    }
+                    active_neighbours[1] = true;
+                    findNeighbours(1);
+
+                    for (int i = 2; i<255; i++) {
+                        if (active_network_ids[i] and !active_neighbours[i]) {
+                            removeNetworkID(i);
+                            printf("Removed Network ID (not in neighbours): %d\n", i);
+                            if (webserver) {
+                                std::string arr = "Removed Network ID (not in neighbours): " + std::to_string(i);
+                                ws->send(arr);
+                                arr = "{\"removed_nid\": " + std::to_string(i) + "}";
+                                ws->send(arr);
+                            }
+                        }
                     }
                 }
             }
-
             else {
-                printf("Unknown type by %d: %d\n", sender, buf[0]);
+                printf("Unknown type by %d: %d\n", sender, type);
+                std::string arr = "Unknown type by " + std::to_string(sender) + ": " + std::to_string(type);
+                if (webserver)
+                    ws->send(arr);
             }
         }
         sleep_for(milliseconds(10));
@@ -252,6 +382,8 @@ int main() {
     #ifdef _WIN32
         WSACleanup();
     #endif
+    hid_close(device);
+    res = hid_exit();
     return 0;
 }
 
