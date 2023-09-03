@@ -1,5 +1,6 @@
 #include "easywsclient.cpp"
 #include <hidapi.h>
+#include <json.hpp>
 #include <iostream>
 #include <cstdlib>
 #include <stdio.h>
@@ -9,6 +10,7 @@
 #include <assert.h>
 #include <string>
 #include <format>
+#include <fstream>
 
 
 #ifdef _WIN32
@@ -36,6 +38,8 @@ uint8_t hardware_ids[255][5];
 uint8_t neighbours[255][4];
 uint8_t active_neighbours[255];
 
+bool update_config = false;
+
 bool lastLED = false;
 bool led = false;
 
@@ -44,6 +48,9 @@ void handle_message(const std::string & message)
 {
     if (message == "toggle") {
         led = !led;
+    }
+    else if (message == "update-config") {
+        update_config = true;
     }
 }
 
@@ -125,13 +132,14 @@ void findNeighbours(uint8_t nid) {
             }
         }
     }
-    return;
 }
 
 
 
 using easywsclient::WebSocket;
 static WebSocket::pointer ws = NULL;
+using json = nlohmann::json;
+
 
 int main() {
     using namespace std::this_thread;
@@ -142,7 +150,10 @@ int main() {
     }
     active_network_ids[1] = true;
     srand(time(0));
-    
+
+    std::ifstream f("C:\\Users\\finnk\\Desktop\\tiles-config.json");
+    json data = json::parse(f);
+
     hid_device *device;
     int res;
     res = hid_init();
@@ -188,6 +199,7 @@ int main() {
     unsigned char buf[64];
     while (true) {
         if (led != lastLED) {
+            ws->send("Toggle LED");
             int data[] = {1};
             if (led) {
                 data[0] = {2};
@@ -204,6 +216,14 @@ int main() {
                 ws->dispatch(handle_message);
             }
             // *****WS STUFF***** //
+        }
+
+        if (update_config) {
+            printf("Updating config");
+            ws->send("Updating config");
+            std::ifstream f("C:\\Users\\finnk\\Desktop\\tiles-config.json");
+            data = json::parse(f);
+            update_config = false;
         }
 
         res = hid_read(device, buf, 64);
