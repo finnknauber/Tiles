@@ -11,6 +11,7 @@
 		"package": "node src-tauri/binaries/scripts/rename-binary.js"
 	},
 	"dependencies": {
+		"@heroicons/react": "^2.0.18",
 		"@tauri-apps/api": "^1.4.0",
 		"@tauri-apps/plugin-websocket": "^2.0.0-alpha.0",
 		"react": "^18.2.0",

@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 interface AppState {
   connected: boolean;
+  rotation: number;
   connectedNIDs: number[];
   nidToHid: Record<number, number[]>;
   nidToType: Record<number, number>;
@@ -9,6 +10,7 @@ interface AppState {
   nidToData: Record<number, number>;
 
   setConnected: (connected: boolean) => void;
+  rotate: () => void;
   connectTile: (nid: number, type: number, hid: number[]) => void;
   setNeighbours: (nid: number, neighbours: number[]) => void;
   setData: (nid: number, data: number) => void;
@@ -17,6 +19,7 @@ interface AppState {
 
 const useStore = create<AppState>()((set, get) => ({
   connected: false,
+  rotation: 0,
   connectedNIDs: [],
   nidToHid: {},
   nidToType: {},
@@ -28,6 +31,10 @@ const useStore = create<AppState>()((set, get) => ({
     if (!connected) {
       clearConnected();
     }
+  },
+  rotate: () => {
+    const newRotation = (get().rotation + 90) % 360;
+    set({ rotation: newRotation });
   },
   connectTile: (nid: number, type: number, hid: number[]) => {
     const newNidToHid = { ...get().nidToHid };
