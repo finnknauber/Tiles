@@ -19,7 +19,8 @@
 			"path": "Wireless Tile"
 		},
 		{
-			"path": "Tiles App/tiles-app"
+			"name": "4 Button Tile",
+			"path": "4 Button Tile"
 		}
 	],
 	"settings": {
@@ -101,7 +102,8 @@
 			"numbers": "cpp",
 			"semaphore": "cpp",
 			"span": "cpp",
-			"stop_token": "cpp"
+			"stop_token": "cpp",
+			"ranges": "cpp"
 		}
 	}
 }

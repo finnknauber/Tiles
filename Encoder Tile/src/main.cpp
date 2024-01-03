@@ -214,10 +214,6 @@ void loop()
 							lastAskedForNetworkID = 0;
 							for (int j = 0; j < 4; j++)
 							{
-								if (active_children[j])
-								{
-									tile.sendData(TypeTileCommand, target[direction], &command, 1, j, sender[direction]);
-								}
 								tile.sendData(TypeHereIsMyNID, 0, &tile.NETWORK_ID, 1, j);
 							}
 						}
@@ -286,6 +282,7 @@ void loop()
 						{
 							tile.sendData(TypeHereIsMyNID, 0, &tile.NETWORK_ID, 1, j);
 						}
+						tile.sendData(TypeReportNeighbours, 1, active_directions, 4);
 					}
 					else if (type[direction] == TypeHereIsMyNID and tile.NETWORK_ID != 0)
 					{

@@ -1,4 +1,4 @@
-#include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
 #include "HID-Project.h"
 uint8_t rawhidData[255];
 byte megabuff[64];
@@ -12,6 +12,8 @@ byte megabuff[64];
 #define TypeHereIsYourNID 0b01110111
 #define TypeChangeHardwareID 0b10001000
 #define TypeTileCommand 0b10011001
+#define TypeFrontendPing 0b10101010
+
 
 int connected_to = 0;
 int currentLength = 0;
@@ -19,6 +21,16 @@ int currentType = 0;
 int currentTarget = 0;
 int currentSender = 0;
 bool activeMessage = false;
+
+
+Adafruit_NeoPixel pixels(1, 10, NEO_GRB + NEO_KHZ800);
+
+uint8_t currentLEDValues[3];
+uint8_t newLEDValues[3];
+bool newLEDValuesAvailable = true;
+
+int highestNetworkID = 1;
+
 
 void sendData(uint8_t type, uint8_t target_network_id, const int *data, uint8_t size)
 {
@@ -31,7 +43,6 @@ void sendData(uint8_t type, uint8_t target_network_id, const int *data, uint8_t 
 	{
 		Serial1.write(data[curByte]);
 	}
-	// TODO Checksum
 }
 
 void resetBuf()
@@ -57,8 +68,8 @@ void sendToFrontend(uint8_t type, uint8_t sender, const int *data, uint8_t size)
 }
 
 bool is_valid_data_type(uint8_t type) {
-	int data_types[] = {TypeGeneral, TypeParentManagement, TypeHereIsMyNID, TypeNeedNID, TypeReportHID, TypeReportNeighbours, TypeHereIsYourNID, TypeChangeHardwareID, TypeTileCommand};
-	for (int i = 0; i < 11; i++)
+	int data_types[] = {TypeGeneral, TypeParentManagement, TypeHereIsMyNID, TypeNeedNID, TypeReportHID, TypeReportNeighbours, TypeHereIsYourNID, TypeChangeHardwareID, TypeTileCommand, TypeFrontendPing};
+	for (int i = 0; i < 12; i++)
 	{
 		if (type == data_types[i])
 		{
@@ -68,24 +79,65 @@ bool is_valid_data_type(uint8_t type) {
 	return false;
 }
 
-void setup()
-{
+void setNewLEDValuesAvailable() {
+	newLEDValuesAvailable = false;
+	for (int j = 0; j < 3; j++) {
+		if (currentLEDValues[j] != newLEDValues[j]) {
+			newLEDValuesAvailable = true;
+		}
+	}
+}
+
+void setNewLEDValues(int r, int g, int b) {
+	newLEDValues[0] = r;
+	newLEDValues[1] = g;
+	newLEDValues[2] = b;
+	setNewLEDValuesAvailable();
+}
+
+
+
+void setup() {
+	pixels.begin();
+	pixels.clear();
+	pixels.show();
+	pixels.setBrightness(25);
 	randomSeed(analogRead(A1));
 	pinMode(0, INPUT_PULLUP);
-	pinMode(3, INPUT);
+	pinMode(5, INPUT);
+	setNewLEDValues(255, 0, 0);
+	delay(50);
 
 	RawHID.begin(rawhidData, sizeof(rawhidData));
 	Serial.begin(115200);
 	Serial1.begin(115200);
-	delay(10);
+
+
 	Serial.println("Starting");
 }
 
-void loop()
-{
-	delay(10);
+
+void loop() {
+	if (newLEDValuesAvailable) {
+		for (int i = 0; i < 3; i++) {
+			if (currentLEDValues[i] > newLEDValues[i]) {
+				currentLEDValues[i]--;
+			}
+			if (currentLEDValues[i] < newLEDValues[i]) {
+				currentLEDValues[i]++;
+			}
+			pixels.setPixelColor(0, pixels.Color(currentLEDValues[0], currentLEDValues[1], currentLEDValues[2]));
+			pixels.show();
+		}
+		delay(5);
+
+		setNewLEDValuesAvailable();
+	}
+
+
+	delay(1);
 	/* NEIGHBOUR MANAGEMENT */
-	if (!digitalRead(3) and connected_to != 0)
+	if (!digitalRead(5) and connected_to != 0)
 	{
 		Serial.println("Update connected to: 0");
 		connected_to = 0;
@@ -110,38 +162,70 @@ void loop()
 		Serial.print(", Length: ");
 		Serial.print(length);
 		Serial.print(", Data: ");
-		while (RawHID.available() < length)
-		{
+		while (RawHID.available() < length) {}
+		int buffer[length];
+		for (int i = 0; i < length; i++) {
+			buffer[i] = RawHID.read();
 		}
-		if (type == TypeHereIsYourNID)
+		for (int i = 0; i < (60 - length); i++) {
+			RawHID.read();
+		}
+
+		if (type == TypeFrontendPing) {
+			if (buffer[0] == 2) {
+				Serial.println("First Connect!");
+				setNewLEDValues(0, 0, 0);
+			}
+			else if (buffer[0] == 3) {
+				Serial.println("Disconnected!");
+				setNewLEDValues(255, 0, 0);
+				int value = 3;
+				for (int i = highestNetworkID; i >= 2; i--) {
+					sendData(TypeTileCommand, i, &value, 1);
+				}
+				highestNetworkID = 1;
+			}
+		}
+		else if (type == TypeHereIsYourNID)
 		{
-			int newAdress = RawHID.read();
-			Serial.println(newAdress);
-			sendData(TypeHereIsYourNID, 0, &newAdress, 1);
+			if (buffer[0] > highestNetworkID) {
+				highestNetworkID = buffer[0];
+			}
+			Serial.println(buffer[0]);
+			sendData(TypeHereIsYourNID, 0, buffer, 1);
 		}
 		else if (type == TypeChangeHardwareID)
 		{
-			int new_id[4] = {};
-			for (int i = 0; i < 4; i++)
-			{
-				new_id[i] = RawHID.read();
-				Serial.print(new_id[i]);
+			for (int i = 0; i < 4; i++) {
+				Serial.print(buffer[i]);
 				Serial.print(",");
 			}
 			Serial.println();
-			sendData(TypeChangeHardwareID, target, new_id, 4);
+			sendData(TypeChangeHardwareID, target, buffer, 4);
 		}
 		else if (type == TypeTileCommand)
 		{
-			int value = RawHID.read();
-			sendData(TypeTileCommand, target, &value, 1);
-		}
-		for (int i = 0; i < (60 - length); i++)
-		{
-			RawHID.read();
+			if (target == 1) {
+				if (buffer[0] == 1) {
+					setNewLEDValues(buffer[1], buffer[2], buffer[3]);
+				}
+				else if (buffer[0] == 2) {
+					setNewLEDValues(0, 0, 0);
+				}
+				else if (buffer[0] == 3 or buffer[0] == 4) {
+					for (int i = highestNetworkID; i >= 2; i--) {
+						sendData(TypeTileCommand, i, &buffer[0], 1);
+					}
+					highestNetworkID = 1;
+				}
+			}
+			else {
+				sendData(TypeTileCommand, target, buffer, length);
+			}
 		}
 	}
 	/* MESSAGES FROM FRONTEND */
+
 
 	if (Serial1.available() >= (activeMessage ? currentLength : 4))
 	{
@@ -238,3 +322,4 @@ void loop()
 		}
 	}
 }
+

@@ -1,16 +1,21 @@
+#include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 #include <T2T.h>
 
 T2T tile;
 
-#define LED PC13
-#define BUTTON1 PA8
-#define BUTTON2 PA9
+#define BUTTON1 PB12
+#define BUTTON2 PB13
+#define BUTTON3 PB14
+#define BUTTON4 PB15
 #define READ_UP PA1
-#define READ_RIGHT PB15
-#define READ_DOWN PA3
-#define READ_LEFT PA4
-#define TILETYPE 0x02
+#define READ_RIGHT PA3
+#define READ_DOWN PA4
+#define READ_LEFT PA5
+#define TILETYPE 0x03
+
+Adafruit_NeoPixel pixels(4, PA8, NEO_GRB + NEO_KHZ800);
+
 
 int direction_pins[4] = {READ_UP, READ_RIGHT, READ_DOWN, READ_LEFT};
 bool active_new_tiles[4] = {false, false, false, false};
@@ -28,30 +33,60 @@ uint8_t target[4] = {0, 0, 0, 0};
 uint8_t sender[4] = {0, 0, 0, 0};
 uint8_t length[4] = {0, 0, 0, 0};
 
-void ledOn()
-{
-	digitalWrite(LED, LOW);
+
+uint8_t currentLEDValues[4][3];
+uint8_t newLEDValues[4][3];
+bool newLEDValuesAvailable = true;
+
+
+void updateLEDValues(int led) {
+	for (int i = 0; i < 3; i++) {
+		if (currentLEDValues[led][i] > newLEDValues[led][i]) {
+			currentLEDValues[led][i]--;
+		}
+		if (currentLEDValues[led][i] < newLEDValues[led][i]) {
+			currentLEDValues[led][i]++;
+		}
+	}
 }
 
-void ledOff()
-{
-	digitalWrite(LED, HIGH);
+void setNewLEDValuesAvailable() {
+	newLEDValuesAvailable = false;
+	for (int i = 0; i < 4; i++) {
+		for (int j = 0; j < 3; j++) {
+			if (currentLEDValues[i][j] != newLEDValues[i][j]) {
+				newLEDValuesAvailable = true;
+			}
+		}
+	}
 }
 
-void ledReverse()
-{
-	digitalWrite(LED, !digitalRead(LED));
+void setNewLEDValues(int led, int r, int g, int b) {
+	newLEDValues[led][0] = r;
+	newLEDValues[led][1] = g;
+	newLEDValues[led][2] = b;
+	setNewLEDValuesAvailable();
 }
 
+
+void setLed(uint8_t led)
+{
+	pixels.setPixelColor(led, pixels.Color(currentLEDValues[led][0], currentLEDValues[led][1], currentLEDValues[led][2]));
+	pixels.show();
+}
 
 void button1_pressed()
 {
 	if (tile.NETWORK_ID != 0)
 	{
-		ledOn();
-		bitWrite(data, 0, !digitalRead(BUTTON1));
-		delay(10);
-		ledOff();
+		bool value = digitalRead(BUTTON1);
+		if (value) {
+			data = data & 0b0;
+		}
+		else {
+			data = data | 0b1;
+		}
+		setNewLEDValues(0, 0, value ? 0 : 255, 0);
 	}
 }
 
@@ -59,36 +94,76 @@ void button2_pressed()
 {
 	if (tile.NETWORK_ID != 0)
 	{
-		ledOn();
-		bitWrite(data, 1, !digitalRead(BUTTON2));
-		delay(10);
-		ledOff();
+		bool value = digitalRead(BUTTON2);
+		setNewLEDValues(1, 0, value ? 0 : 255, 0);
+		bitWrite(data, 1, !value);
+	}
+}
+
+void button3_pressed()
+{
+	if (tile.NETWORK_ID != 0)
+	{
+		bool value = digitalRead(BUTTON3);
+		setNewLEDValues(3, 0, value ? 0 : 255, 0);
+		bitWrite(data, 2, !value);
+	}
+}
+
+void button4_pressed()
+{
+	if (tile.NETWORK_ID != 0)
+	{
+		bool value = digitalRead(BUTTON4);
+		setNewLEDValues(2, 0, value ? 0 : 255, 0);
+		bitWrite(data, 3, !value);
 	}
 }
 
 void setup()
 {
-	pinMode(LED, OUTPUT);
 	pinMode(BUTTON1, INPUT);
 	pinMode(BUTTON2, INPUT);
+	pinMode(BUTTON3, INPUT);
+	pinMode(BUTTON4, INPUT);
 	pinMode(READ_UP, INPUT);
 	pinMode(READ_RIGHT, INPUT);
 	pinMode(READ_DOWN, INPUT);
 	pinMode(READ_LEFT, INPUT);
-	ledOn();
+	pixels.begin();
+	pixels.setBrightness(50);
+	pixels.clear();
+	pixels.show();
+	for (int i = 0; i < 4; i++) {
+		currentLEDValues[i][0] = 0;
+		currentLEDValues[i][1] = 0;
+		currentLEDValues[i][2] = 0;
+	}
 	tile.begin();
-	delay(10);
+
 
 	attachInterrupt(digitalPinToInterrupt(BUTTON1), button1_pressed, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(BUTTON2), button2_pressed, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(BUTTON3), button3_pressed, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(BUTTON4), button4_pressed, CHANGE);
 }
+
 
 void loop()
 {
 	delay(10);
+	if (newLEDValuesAvailable) {
+		for (int led = 0; led < 4; led++) {
+			updateLEDValues(led);
+			setLed(led);
+		}
+		setNewLEDValuesAvailable();
+	}
+
 	if (tile.MASTER_DIRECTION != 100)
 	{
-		if (data != lastData)
+		/*****SEND DATA*****/
+		if (tile.NETWORK_ID != 0 and data != lastData)
 		{
 			if (bitRead(data, 0) != bitRead(lastData, 0))
 			{
@@ -100,14 +175,58 @@ void loop()
 				uint8_t value = bitRead(data, 1) ? 2 : 3;
 				tile.sendData(TypeGeneral, 1, &value, 1);
 			}
+			if (bitRead(data, 2) != bitRead(lastData, 2))
+			{
+				uint8_t value = bitRead(data, 2) ? 4 : 5;
+				tile.sendData(TypeGeneral, 1, &value, 1);
+			}
+			if (bitRead(data, 3) != bitRead(lastData, 3))
+			{
+				uint8_t value = bitRead(data, 3) ? 6 : 7;
+				tile.sendData(TypeGeneral, 1, &value, 1);
+			}
 			lastData = data;
 		}
-    if (tile.NETWORK_ID == 0 and (millis() > lastAskedForNetworkID + 750 or lastAskedForNetworkID == 0))
-		{
+		/*****SEND DATA*****/
+
+		/*****REQUEST NETWORK ID*****/
+		if (tile.NETWORK_ID == 0 and lastAskedForNetworkID != -1 and (millis() > lastAskedForNetworkID + 750 or lastAskedForNetworkID == 0)) {
+			for (int i = 0; i < 4; i++) {
+				setNewLEDValues(i, 255, 0, 0);
+			}
 			tile.sendData(TypeNeedNID, 1, {}, 0);
 			lastAskedForNetworkID = millis();
 		}
+		/*****REQUEST NETWORK ID*****/
 	}
+
+	else {
+		if (millis() % 1200 < 300) {
+			setNewLEDValues(0, 50, 0, 0);
+			setNewLEDValues(1, 20, 0, 0);
+			setNewLEDValues(2, 0, 0, 0);
+			setNewLEDValues(3, 20, 0, 0);
+		}
+		else if (millis() % 1200 < 600) {
+			setNewLEDValues(0, 20, 0, 0);
+			setNewLEDValues(1, 50, 0, 0);
+			setNewLEDValues(2, 20, 0, 0);
+			setNewLEDValues(3, 0, 0, 0);
+		}
+		else if (millis() % 1200 < 900) {
+			setNewLEDValues(0, 0, 0, 0);
+			setNewLEDValues(1, 20, 0, 0);
+			setNewLEDValues(2, 50, 0, 0);
+			setNewLEDValues(3, 20, 0, 0);
+		}
+		else {
+			setNewLEDValues(0, 20, 0, 0);
+			setNewLEDValues(1, 0, 0, 0);
+			setNewLEDValues(2, 20, 0, 0);
+			setNewLEDValues(3, 50, 0, 0);
+		}
+	}
+
 
 	for (int direction = 0; direction < 4; direction++)
 	{
@@ -144,9 +263,11 @@ void loop()
 		}
 		// *****REPORT NEIGHBOURS ON DISCONNECT***** //
 
+
 		// *****HANDLE INCOMING MESSAGES***** //
 		if (tile.available(direction) >= (active_message[direction] ? length[direction] : 4))
 		{
+			// *****READ MESSAGE DATA***** //
 			if (!active_message[direction])
 			{
 				type[direction] = tile.readByte(direction);
@@ -159,12 +280,15 @@ void loop()
 				length[direction] = tile.readByte(direction);
 				active_message[direction] = true;
 			}
+			// *****READ MESSAGE DATA***** //
+
 
 			else
 			{
 				// Target is this tile
 				if (target[direction] == tile.NETWORK_ID and tile.NETWORK_ID != 0)
 				{
+					// Change Hardware ID
 					if (type[direction] == TypeChangeHardwareID)
 					{
 						uint8_t buffer[length[direction]];
@@ -173,19 +297,44 @@ void loop()
 						uint8_t uid_type[5] = {tile.UID[0], tile.UID[1], tile.UID[2], tile.UID[3], TILETYPE};
 						tile.sendData(TypeReportHID, 1, uid_type, 5);
 					}
+					// Tile Command
 					else if (type[direction] == TypeTileCommand)
 					{
 						uint8_t command = tile.readByte(direction);
 						if (command == CommandOnLights) {
-							ledOn();
+							uint8_t buffer[12];
+							tile.readData(buffer, length[direction], direction);
+
+							for (int i = 0; i < 4; i++) {
+								setNewLEDValues(i, buffer[i*3], buffer[i*3+1], buffer[i*3+2]);
+							}
 						}
+
 						else if (command == CommandOffLights) {
-							ledOff();
+							for (int i = 0; i < 4; i++) {
+								setNewLEDValues(i, 0, 0, 0);
+							}
 						}
-						else if (command = CommandResetNID) {
-							ledOn();
+						else if (command == CommandResetNID) {
+							for (int i = 0; i < 4; i++) {
+								setNewLEDValues(i, 255, 0, 0);
+							}
+
 							tile.NETWORK_ID = 0;
 							lastAskedForNetworkID = 0;
+							for (int j = 0; j < 4; j++)
+							{
+								tile.sendData(TypeHereIsMyNID, 0, &tile.NETWORK_ID, 1, j);
+							}
+						}
+						else if (command == CommandFactoryReset) {
+							for (int i = 0; i < 4; i++) {
+								setNewLEDValues(i, 255, 35, 0);
+							}
+
+							tile.setUID(0, 0, 0, 0);
+							tile.NETWORK_ID = 0;
+							lastAskedForNetworkID = -1;
 							for (int j = 0; j < 4; j++)
 							{
 								tile.sendData(TypeHereIsMyNID, 0, &tile.NETWORK_ID, 1, j);
@@ -194,9 +343,10 @@ void loop()
 					}
 				}
 
-				// Target is a new tile (ID=0) or me with no network id
+				// Target is new tile (this tile or other)
 				else if (target[direction] == 0)
 				{
+					// *****PARENT MANAGEMENT***** //
 					if (type[direction] == TypeParentManagement) {
 						uint8_t action = tile.readByte(direction);
 						if (action == ParentAreYou)
@@ -244,20 +394,28 @@ void loop()
 								}
 							}
 						}
+						// *****PARENT MANAGEMENT***** //
 					}
 
+					// Get Network ID assigned
 					else if (type[direction] == TypeHereIsYourNID and tile.NETWORK_ID == 0)
 					{
 						tile.NETWORK_ID = tile.readByte(direction);
 						uint8_t uid_type[5] = {tile.UID[0], tile.UID[1], tile.UID[2], tile.UID[3], TILETYPE};
 						tile.sendData(TypeReportHID, 1, uid_type, 5);
-						ledOff();
+						for (int i = 0; i < 4; i++) {
+							for (int i = 0; i < 4; i++) {
+								setNewLEDValues(i, 0, 0, 0);
+							}
+						}
 						for (int j = 0; j < 4; j++)
 						{
 							tile.sendData(TypeHereIsMyNID, 0, &tile.NETWORK_ID, 1, j);
 						}
 						tile.sendData(TypeReportNeighbours, 1, active_directions, 4);
 					}
+
+					// Share Network ID with neighbours
 					else if (type[direction] == TypeHereIsMyNID and tile.NETWORK_ID != 0)
 					{
 						int id = tile.readByte(direction);
@@ -268,8 +426,8 @@ void loop()
 							tile.sendData(TypeReportNeighbours, 1, active_directions, 4);
 						}
 					}
-					else
-					{
+
+					else {
 						uint8_t buffer[length[direction]];
 						tile.readData(buffer, length[direction], direction);
 
